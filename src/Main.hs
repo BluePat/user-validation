@@ -1,5 +1,7 @@
 module Main where
 
+import Control.Lens
+
 import Data.Char
 import Data.Coerce
 import Data.Validation
@@ -23,25 +25,27 @@ main = do
 
   display username password
 
-checkLength :: Int -> Rule String
-checkLength minLength input = 
-  let inputLength = length input 
-  in case (inputLength < minLength) of
-    True -> Failure $ Error ["Input does not comply with minimum length restriction."]
-    False -> Success input
+display :: Username -> Password -> IO ()
+display name password =
+  case makeUser name password of
+    Failure err -> putStr $ unlines $ coerce  err
+    Success (User uname _) ->
+      putStrLn ("Welcome, " ++ coerce uname)
 
-requireAlphaNum :: Rule String
-requireAlphaNum xs =
-  case (all isAlphaNum xs) of
-    False -> Failure $ Error ["Input contains non-alphanumeric characters."]
-    True -> Success xs
+makeUser :: Username -> Password -> Validation Error User
+makeUser username password =
+  User <$> usernameErrors username
+       <*> passwordsErrors password
 
-cleanWhiteSpace :: Rule String
-cleanWhiteSpace "" = Failure $ Error ["Input consists solely of whitespaces."]
-cleanWhiteSpace (x : xs) = 
-  case (isSpace x) of
-    True -> cleanWhiteSpace xs
-    False -> Success (x : xs)
+passwordsErrors :: Rule Password
+passwordsErrors password =
+  over _Failure (\err -> Error ["ERR Invalid password:"] <> err)
+                (validatePassword password)
+
+usernameErrors :: Rule Username
+usernameErrors username =
+  over _Failure (\err -> Error ["ERR Invalid username:"] <> err)
+                (validateUsername username)
 
 validatePassword :: Rule Password
 validatePassword input =
@@ -59,26 +63,22 @@ validateUsername input =
       (coerce requireAlphaNum :: Rule Username) input *>
       (coerce $ checkLength minUsernameLength :: Rule Username) input
 
-passwordsErrors :: Password -> Validation Error Password
-passwordsErrors password =
-  case (validatePassword password) of
-    Failure err -> Failure $ (Error ["ERR Invalid password: "]) <> err
-    Success _ -> Success password
+cleanWhiteSpace :: Rule String
+cleanWhiteSpace "" = Failure $ Error ["Input consists solely of whitespaces."]
+cleanWhiteSpace (x : xs) = 
+  case (isSpace x) of
+    True -> cleanWhiteSpace xs
+    False -> Success (x : xs)
 
-usernameErrors :: Username -> Validation Error Username
-usernameErrors username =
-  case (validateUsername username) of
-    Failure err -> Failure $ (Error ["ERR Invalid username: "]) <> err
-    Success _ -> Success username
+requireAlphaNum :: Rule String
+requireAlphaNum xs =
+  case (all isAlphaNum xs) of
+    False -> Failure $ Error ["Input contains non-alphanumeric characters."]
+    True -> Success xs
 
-makeUser :: Username -> Password -> Validation Error User
-makeUser username password =
-  User <$> usernameErrors username
-       <*> passwordsErrors password
-
-display :: Username -> Password -> IO ()
-display name password =
-  case makeUser name password of
-    Failure err -> putStr $ unlines $ coerce  err
-    Success (User uname _) ->
-      putStrLn ("Welcome, " ++ coerce uname)
+checkLength :: Int -> Rule String
+checkLength minLength input = 
+  let inputLength = length input 
+  in case (inputLength < minLength) of
+    True -> Failure $ Error ["Input does not comply with minimum length restriction."]
+    False -> Success input
